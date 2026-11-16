@@ -1,0 +1,17 @@
+---
+import { ruta } from '../lib/ruta';
+const destinoPanel = ruta('/dashboard');
+const destinoLogin = ruta('/login');
+---
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>AutoGestión GT</title>
+    <script is:inline define:vars={{ destinoPanel, destinoLogin }}>
+      const sesion = sessionStorage.getItem('autos_sesion') || localStorage.getItem('autos_sesion');
+      location.replace(sesion ? destinoPanel : destinoLogin);
+    </script>
+  </head>
+  <body></body>
+</html>

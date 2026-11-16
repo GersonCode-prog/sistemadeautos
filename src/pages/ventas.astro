@@ -1,0 +1,296 @@
+---
+import Panel from '../layouts/Panel.astro';
+---
+<Panel titulo="Ventas" activo="ventas">
+  <button slot="acciones" class="btn btn-primario" id="btn-nueva">+ Nueva venta</button>
+
+  <section class="resumen">
+    <div class="tarjeta mini"><p>Ventas completadas</p><strong id="r-cantidad">0</strong></div>
+    <div class="tarjeta mini"><p>Total vendido</p><strong id="r-total">Q 0</strong></div>
+    <div class="tarjeta mini"><p>Venta promedio</p><strong id="r-promedio">Q 0</strong></div>
+    <div class="tarjeta mini"><p>Descuentos otorgados</p><strong id="r-descuentos">Q 0</strong></div>
+  </section>
+
+  <div class="tarjeta">
+    <div class="tarjeta-cabecera">
+      <div class="herramientas" style="flex:1">
+        <div class="buscador"><input class="control" id="buscar" placeholder="Buscar por folio, cliente o vehículo..." /></div>
+        <select class="control" id="filtro-estado">
+          <option value="">Todas</option><option>Completada</option><option>Anulada</option>
+        </select>
+        <input class="control" type="month" id="filtro-mes" title="Filtrar por mes" />
+      </div>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Vehículo</th><th>Pago</th><th>Total</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody id="tabla"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal: nueva venta -->
+  <dialog class="modal" id="modal-venta">
+    <form id="form-venta" method="dialog">
+      <div class="modal-cabecera">
+        <h3>Registrar venta <span class="folio" id="folio-nuevo"></span></h3>
+        <button type="button" class="modal-cerrar" data-cerrar aria-label="Cerrar">×</button>
+      </div>
+      <div class="modal-cuerpo">
+        <div class="rejilla-form">
+          <div class="campo completo"><label>Cliente *</label><select name="clienteId" id="sel-cliente" required></select></div>
+          <div class="campo completo"><label>Vehículo *</label><select name="vehiculoId" id="sel-vehiculo" required></select></div>
+          <div class="vista-auto completo" id="vista-auto" hidden></div>
+          <div class="campo"><label>Fecha *</label><input type="date" name="fecha" required /></div>
+          <div class="campo"><label>Método de pago</label>
+            <select name="metodoPago"><option>Contado</option><option>Financiado</option><option>Transferencia</option></select>
+          </div>
+          <div class="campo"><label>Precio (Q)</label><input name="precio" id="precio" type="number" readonly /></div>
+          <div class="campo"><label>Descuento (Q)</label><input name="descuento" id="descuento" type="number" min="0" step="100" value="0" /></div>
+        </div>
+        <div class="total-venta"><span>Total a pagar</span><strong id="total">Q 0.00</strong></div>
+      </div>
+      <div class="modal-acciones">
+        <button type="button" class="btn btn-secundario" data-cerrar>Cancelar</button>
+        <button type="submit" class="btn btn-primario">Registrar venta</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal: comprobante -->
+  <dialog class="modal" id="modal-recibo">
+    <div class="modal-cabecera">
+      <h3>Comprobante de venta</h3>
+      <button type="button" class="modal-cerrar" data-cerrar aria-label="Cerrar">×</button>
+    </div>
+    <div class="modal-cuerpo" id="recibo"></div>
+    <div class="modal-acciones">
+      <button type="button" class="btn btn-secundario" data-cerrar>Cerrar</button>
+      <button type="button" class="btn btn-primario" id="btn-imprimir">🖨️ Imprimir</button>
+    </div>
+  </dialog>
+</Panel>
+
+<script>
+  import { obtener, guardar, insertarOActualizar, buscarPorId, nuevoId, hoy, siguienteFolio, formatoQ, formatoQCorto, formatoFecha, formatoNumero, escapar, type Venta } from '../lib/datos';
+  import { aviso, confirmar, prepararModal, leerFormulario } from '../lib/ui';
+  import { usuarioActual, esAdmin } from '../lib/sesion';
+  import { autoSvg } from '../lib/autoSvg';
+
+  const tabla = document.getElementById('tabla')!;
+  const buscar = document.getElementById('buscar') as HTMLInputElement;
+  const filtroEstado = document.getElementById('filtro-estado') as HTMLSelectElement;
+  const filtroMes = document.getElementById('filtro-mes') as HTMLInputElement;
+  const modalVenta = prepararModal('modal-venta');
+  const modalRecibo = prepararModal('modal-recibo');
+  const form = document.getElementById('form-venta') as HTMLFormElement;
+  const selCliente = document.getElementById('sel-cliente') as HTMLSelectElement;
+  const selVehiculo = document.getElementById('sel-vehiculo') as HTMLSelectElement;
+  const precio = document.getElementById('precio') as HTMLInputElement;
+  const descuento = document.getElementById('descuento') as HTMLInputElement;
+
+  const poner = (id: string, t: string) => { document.getElementById(id)!.textContent = t; };
+
+  function pintar() {
+    const vehiculos = obtener('vehiculos');
+    const clientes = obtener('clientes');
+    const todas = obtener('ventas');
+    const completadas = todas.filter((v) => v.estado === 'Completada');
+    const total = completadas.reduce((t, v) => t + v.total, 0);
+    poner('r-cantidad', String(completadas.length));
+    poner('r-total', formatoQCorto(total));
+    poner('r-promedio', formatoQCorto(completadas.length ? total / completadas.length : 0));
+    poner('r-descuentos', formatoQCorto(completadas.reduce((t, v) => t + v.descuento, 0)));
+
+    const texto = buscar.value.toLowerCase().trim();
+    const filas = todas
+      .map((v) => ({ v, c: clientes.find((x) => x.id === v.clienteId), a: vehiculos.find((x) => x.id === v.vehiculoId) }))
+      .filter(({ v, c, a }) =>
+        (!texto || `${v.folio} ${c?.nombre ?? ''} ${a?.marca ?? ''} ${a?.modelo ?? ''}`.toLowerCase().includes(texto)) &&
+        (!filtroEstado.value || v.estado === filtroEstado.value) &&
+        (!filtroMes.value || v.fecha.startsWith(filtroMes.value)))
+      .sort((x, y) => y.v.fecha.localeCompare(x.v.fecha) || y.v.folio.localeCompare(x.v.folio));
+
+    tabla.innerHTML = filas.length ? filas.map(({ v, c, a }) => `
+      <tr class="${v.estado === 'Anulada' ? 'anulada' : ''}">
+        <td><strong>${escapar(v.folio)}</strong></td>
+        <td>${formatoFecha(v.fecha)}</td>
+        <td>${escapar(c?.nombre ?? '—')}</td>
+        <td>${escapar(a ? `${a.marca} ${a.modelo} ${a.anio}` : '—')}</td>
+        <td>${escapar(v.metodoPago)}</td>
+        <td><strong>${formatoQ(v.total)}</strong>${v.descuento ? `<small class="desc">-${formatoQ(v.descuento)}</small>` : ''}</td>
+        <td><span class="insignia ${v.estado}">${v.estado}</span></td>
+        <td><div class="acciones-fila">
+          <button class="btn btn-icono" data-ver="${v.id}" title="Ver comprobante">🧾</button>
+          ${v.estado === 'Completada' ? `<button class="btn btn-icono peligro" data-anular="${v.id}" title="Anular venta" data-solo-admin>⛔</button>` : ''}
+        </div></td>
+      </tr>`).join('')
+      : '<tr><td colspan="8" class="vacio">🔍 No hay ventas con esos filtros.</td></tr>';
+  }
+
+  // ---------- Nueva venta ----------
+  function actualizarTotal() {
+    const p = Number(precio.value) || 0;
+    const d = Math.min(Number(descuento.value) || 0, p);
+    poner('total', formatoQ(p - d));
+  }
+
+  function alElegirVehiculo() {
+    const a = buscarPorId('vehiculos', selVehiculo.value);
+    const vista = document.getElementById('vista-auto')!;
+    if (!a) { vista.hidden = true; precio.value = ''; actualizarTotal(); return; }
+    precio.value = String(a.precio);
+    vista.hidden = false;
+    vista.innerHTML = `<div class="vista-img">${autoSvg(a.color, a.tipo)}</div>
+      <div><strong>${escapar(a.marca)} ${escapar(a.modelo)} ${a.anio}</strong>
+      <p>${escapar(a.placa)} · ${formatoNumero(a.kilometraje)} km · ${escapar(a.transmision)} · ${escapar(a.combustible)}</p>
+      <span class="insignia ${a.estado}">${a.estado}</span></div>`;
+    actualizarTotal();
+  }
+
+  function abrirNuevaVenta() {
+    const clientes = obtener('clientes');
+    const disponibles = obtener('vehiculos').filter((v) => v.estado !== 'Vendido');
+    if (!clientes.length) return aviso('Primero registra un cliente', 'info');
+    if (!disponibles.length) return aviso('No hay vehículos disponibles para vender', 'info');
+
+    form.reset();
+    poner('folio-nuevo', siguienteFolio());
+    selCliente.innerHTML = '<option value="">Selecciona un cliente...</option>' +
+      clientes.map((c) => `<option value="${c.id}">${escapar(c.nombre)} — NIT ${escapar(c.nit)}</option>`).join('');
+    selVehiculo.innerHTML = '<option value="">Selecciona un vehículo...</option>' +
+      disponibles.map((v) => `<option value="${v.id}">${escapar(v.marca)} ${escapar(v.modelo)} ${v.anio} (${escapar(v.placa)}) — ${formatoQ(v.precio)}${v.estado === 'Reservado' ? ' · Reservado' : ''}</option>`).join('');
+    (form.elements.namedItem('fecha') as HTMLInputElement).value = hoy();
+    alElegirVehiculo();
+    modalVenta.showModal();
+  }
+
+  selVehiculo.addEventListener('change', alElegirVehiculo);
+  descuento.addEventListener('input', actualizarTotal);
+  document.getElementById('btn-nueva')!.addEventListener('click', abrirNuevaVenta);
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    const d = leerFormulario(form);
+    const auto = buscarPorId('vehiculos', d.vehiculoId);
+    if (!auto || auto.estado === 'Vendido') return aviso('Ese vehículo ya no está disponible', 'error');
+    const desc = Number(d.descuento) || 0;
+    if (desc < 0 || desc > auto.precio) return aviso('El descuento no es válido', 'error');
+
+    const venta: Venta = {
+      id: nuevoId(),
+      folio: siguienteFolio(),
+      vehiculoId: auto.id,
+      clienteId: d.clienteId,
+      precio: auto.precio,
+      descuento: desc,
+      total: auto.precio - desc,
+      metodoPago: d.metodoPago as Venta['metodoPago'],
+      fecha: d.fecha,
+      vendedor: usuarioActual()?.nombre ?? '—',
+      estado: 'Completada',
+    };
+    insertarOActualizar('ventas', venta);
+    insertarOActualizar('vehiculos', { ...auto, estado: 'Vendido' });
+    modalVenta.close();
+    aviso(`Venta ${venta.folio} registrada`);
+    pintar();
+    verRecibo(venta.id);
+  });
+
+  // ---------- Comprobante ----------
+  function verRecibo(id: string) {
+    const v = buscarPorId('ventas', id);
+    if (!v) return;
+    const c = buscarPorId('clientes', v.clienteId);
+    const a = buscarPorId('vehiculos', v.vehiculoId);
+    document.getElementById('recibo')!.innerHTML = `
+      <div class="recibo">
+        <div class="recibo-cabecera">
+          <div><strong class="recibo-marca">🚗 AutoGestión GT</strong><p>Agencia de vehículos</p></div>
+          <div class="derecha"><p class="recibo-folio">${escapar(v.folio)}</p><p>${formatoFecha(v.fecha)}</p>
+          <span class="insignia ${v.estado}">${v.estado}</span></div>
+        </div>
+        <div class="recibo-bloques">
+          <div><p class="etq">Cliente</p><strong>${escapar(c?.nombre ?? '—')}</strong><p>NIT: ${escapar(c?.nit ?? '—')}</p><p>${escapar(c?.telefono ?? '')}</p></div>
+          <div><p class="etq">Vehículo</p><strong>${escapar(a ? `${a.marca} ${a.modelo} ${a.anio}` : '—')}</strong>
+          <p>Placa: ${escapar(a?.placa ?? '—')}</p><p>${a ? `${formatoNumero(a.kilometraje)} km · ${escapar(a.nombreColor)}` : ''}</p></div>
+        </div>
+        <table class="recibo-tabla">
+          <tr><td>Precio del vehículo</td><td>${formatoQ(v.precio)}</td></tr>
+          <tr><td>Descuento</td><td>- ${formatoQ(v.descuento)}</td></tr>
+          <tr class="recibo-total"><td>Total</td><td>${formatoQ(v.total)}</td></tr>
+        </table>
+        <p class="recibo-pie">Método de pago: <strong>${escapar(v.metodoPago)}</strong> · Atendido por: ${escapar(v.vendedor)}</p>
+      </div>`;
+    modalRecibo.showModal();
+  }
+  document.getElementById('btn-imprimir')!.addEventListener('click', () => window.print());
+
+  // ---------- Acciones de la tabla ----------
+  tabla.addEventListener('click', async (e) => {
+    const boton = (e.target as HTMLElement).closest('button');
+    if (!boton) return;
+    if (boton.dataset.ver) verRecibo(boton.dataset.ver);
+    if (boton.dataset.anular) {
+      if (!esAdmin()) return aviso('Solo un administrador puede anular ventas', 'error');
+      const v = buscarPorId('ventas', boton.dataset.anular);
+      if (!v) return;
+      if (await confirmar('¿Anular venta?', `La venta ${v.folio} quedará anulada y el vehículo volverá a estar disponible.`, 'Anular')) {
+        guardar('ventas', obtener('ventas').map((x) => (x.id === v.id ? { ...x, estado: 'Anulada' as const } : x)));
+        const auto = buscarPorId('vehiculos', v.vehiculoId);
+        if (auto) insertarOActualizar('vehiculos', { ...auto, estado: 'Disponible' });
+        aviso(`Venta ${v.folio} anulada`);
+        pintar();
+      }
+    }
+  });
+
+  [buscar, filtroEstado, filtroMes].forEach((el) => el.addEventListener('input', pintar));
+  pintar();
+
+  // Abre el formulario directo si viene del botón "Nueva venta" del dashboard
+  if (new URLSearchParams(location.search).get('nueva')) abrirNuevaVenta();
+</script>
+
+<style>
+  .resumen { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
+  .mini { padding: 1rem 1.2rem; border-left: 4px solid var(--celeste); }
+  .mini p { font-size: .8rem; color: var(--texto-suave); font-weight: 700; }
+  .mini strong { font-size: 1.3rem; }
+  @media (max-width: 900px) { .resumen { grid-template-columns: repeat(2, 1fr); } }
+
+  #tabla :global(.anulada td) { color: #94a3b8; }
+  #tabla :global(.anulada td strong) { text-decoration: line-through; }
+  #tabla :global(.desc) { display: block; font-size: .75rem; color: var(--verde); }
+
+  .folio { font-size: .85rem; color: var(--celeste); margin-left: .4rem; }
+  .vista-auto { display: flex; gap: 1rem; align-items: center; padding: .8rem; border-radius: 10px; background: #f0f7fc; border: 1px solid #d6e9f5; }
+  .vista-auto :global(.vista-img) { width: 130px; flex-shrink: 0; }
+  .vista-auto :global(p) { font-size: .82rem; color: var(--texto-suave); margin-bottom: .3rem; }
+  .total-venta { display: flex; justify-content: space-between; align-items: center; margin-top: 1.25rem; padding: 1rem 1.2rem; border-radius: 10px; background: var(--marino); color: #fff; }
+  .total-venta strong { font-size: 1.5rem; color: var(--celeste); }
+
+  #recibo :global(.recibo-cabecera) { display: flex; justify-content: space-between; gap: 1rem; padding-bottom: 1rem; border-bottom: 2px solid var(--azul); margin-bottom: 1rem; }
+  #recibo :global(.recibo-marca) { font-size: 1.2rem; color: var(--azul); }
+  #recibo :global(.derecha) { text-align: right; }
+  #recibo :global(.recibo-folio) { font-size: 1.2rem; font-weight: 700; }
+  #recibo :global(.recibo-bloques) { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.25rem; }
+  #recibo :global(.etq) { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--texto-suave); font-weight: 700; }
+  #recibo :global(.recibo-bloques p:not(.etq)) { font-size: .88rem; color: var(--texto-suave); }
+  #recibo :global(.recibo-tabla td) { padding: .6rem 0; }
+  #recibo :global(.recibo-tabla td:last-child) { text-align: right; }
+  #recibo :global(.recibo-total td) { font-size: 1.15rem; font-weight: 700; color: var(--azul); border-top: 2px solid var(--texto); }
+  #recibo :global(.recibo-pie) { margin-top: 1rem; font-size: .85rem; color: var(--texto-suave); }
+
+  /* Al imprimir solo se ve el comprobante */
+  @media print {
+    :global(body *) { visibility: hidden; }
+    :global(#modal-recibo), :global(#modal-recibo *) { visibility: visible; }
+    :global(#modal-recibo) { position: absolute; inset: 0; width: 100%; max-height: none; box-shadow: none; }
+    :global(#modal-recibo .modal-acciones), :global(#modal-recibo .modal-cerrar) { display: none; }
+  }
+</style>

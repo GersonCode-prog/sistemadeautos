@@ -1,0 +1,218 @@
+---
+import Panel from '../layouts/Panel.astro';
+---
+<Panel titulo="Vehículos" activo="vehiculos">
+  <button slot="acciones" class="btn btn-primario" id="btn-nuevo">+ Agregar vehículo</button>
+
+  <div class="tarjeta barra-filtros">
+    <div class="herramientas">
+      <div class="buscador"><input class="control" id="buscar" placeholder="Buscar por marca, modelo o placa..." /></div>
+      <select class="control" id="filtro-estado">
+        <option value="">Todos los estados</option>
+        <option>Disponible</option><option>Reservado</option><option>Vendido</option>
+      </select>
+      <select class="control" id="filtro-tipo">
+        <option value="">Todos los tipos</option>
+        <option>Sedán</option><option>SUV</option><option>Pickup</option><option>Hatchback</option><option>Deportivo</option>
+      </select>
+      <select class="control" id="orden">
+        <option value="reciente">Más recientes</option>
+        <option value="precio-asc">Precio: menor a mayor</option>
+        <option value="precio-desc">Precio: mayor a menor</option>
+        <option value="anio">Año: más nuevo</option>
+      </select>
+    </div>
+    <p class="contador" id="contador"></p>
+  </div>
+
+  <div class="rejilla-autos" id="lista"></div>
+
+  <!-- Modal: agregar / editar vehículo -->
+  <dialog class="modal" id="modal-vehiculo">
+    <form id="form-vehiculo" method="dialog">
+      <div class="modal-cabecera">
+        <h3 id="titulo-modal">Agregar vehículo</h3>
+        <button type="button" class="modal-cerrar" data-cerrar aria-label="Cerrar">×</button>
+      </div>
+      <div class="modal-cuerpo">
+        <input type="hidden" name="id" />
+        <div class="rejilla-form">
+          <div class="campo"><label>Marca *</label><input name="marca" required placeholder="Toyota" list="marcas" /></div>
+          <div class="campo"><label>Modelo *</label><input name="modelo" required placeholder="Corolla" /></div>
+          <div class="campo"><label>Año *</label><input name="anio" type="number" min="1980" max="2030" required /></div>
+          <div class="campo"><label>Placa *</label><input name="placa" required placeholder="P-123ABC" /></div>
+          <div class="campo"><label>Precio (Q) *</label><input name="precio" type="number" min="0" step="100" required /></div>
+          <div class="campo"><label>Kilometraje</label><input name="kilometraje" type="number" min="0" step="100" value="0" /></div>
+          <div class="campo"><label>Tipo</label>
+            <select name="tipo"><option>Sedán</option><option>SUV</option><option>Pickup</option><option>Hatchback</option><option>Deportivo</option></select>
+          </div>
+          <div class="campo"><label>Transmisión</label>
+            <select name="transmision"><option>Automática</option><option>Manual</option></select>
+          </div>
+          <div class="campo"><label>Combustible</label>
+            <select name="combustible"><option>Gasolina</option><option>Diésel</option><option>Híbrido</option><option>Eléctrico</option></select>
+          </div>
+          <div class="campo"><label>Estado</label>
+            <select name="estado"><option>Disponible</option><option>Reservado</option><option>Vendido</option></select>
+          </div>
+          <div class="campo"><label>Nombre del color</label><input name="nombreColor" placeholder="Rojo" /></div>
+          <div class="campo"><label>Color</label><input name="color" type="color" value="#14649b" class="selector-color" /></div>
+        </div>
+        <datalist id="marcas">
+          <option>Toyota</option><option>Honda</option><option>Nissan</option><option>Mazda</option><option>Hyundai</option>
+          <option>Kia</option><option>Ford</option><option>Chevrolet</option><option>Mitsubishi</option><option>Suzuki</option>
+        </datalist>
+      </div>
+      <div class="modal-acciones">
+        <button type="button" class="btn btn-secundario" data-cerrar>Cancelar</button>
+        <button type="submit" class="btn btn-primario">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+</Panel>
+
+<script>
+  import { obtener, insertarOActualizar, eliminar, buscarPorId, nuevoId, hoy, formatoQ, formatoNumero, escapar, type Vehiculo } from '../lib/datos';
+  import { aviso, confirmar, prepararModal, leerFormulario, llenarFormulario } from '../lib/ui';
+  import { esAdmin } from '../lib/sesion';
+  import { autoSvg } from '../lib/autoSvg';
+
+  const lista = document.getElementById('lista')!;
+  const buscar = document.getElementById('buscar') as HTMLInputElement;
+  const filtroEstado = document.getElementById('filtro-estado') as HTMLSelectElement;
+  const filtroTipo = document.getElementById('filtro-tipo') as HTMLSelectElement;
+  const orden = document.getElementById('orden') as HTMLSelectElement;
+  const modal = prepararModal('modal-vehiculo');
+  const form = document.getElementById('form-vehiculo') as HTMLFormElement;
+
+  function pintar() {
+    const texto = buscar.value.toLowerCase().trim();
+    let autos = obtener('vehiculos').filter((v) =>
+      (!texto || `${v.marca} ${v.modelo} ${v.placa}`.toLowerCase().includes(texto)) &&
+      (!filtroEstado.value || v.estado === filtroEstado.value) &&
+      (!filtroTipo.value || v.tipo === filtroTipo.value));
+
+    if (orden.value === 'precio-asc') autos.sort((a, b) => a.precio - b.precio);
+    if (orden.value === 'precio-desc') autos.sort((a, b) => b.precio - a.precio);
+    if (orden.value === 'anio') autos.sort((a, b) => b.anio - a.anio);
+
+    document.getElementById('contador')!.textContent = `${autos.length} vehículo${autos.length === 1 ? '' : 's'}`;
+
+    lista.innerHTML = autos.length ? autos.map((v) => `
+      <article class="tarjeta auto">
+        <div class="auto-imagen">
+          <span class="insignia ${v.estado}">${v.estado}</span>
+          ${autoSvg(v.color, v.tipo)}
+        </div>
+        <div class="auto-cuerpo">
+          <p class="auto-anio">${v.anio} · ${escapar(v.tipo)}</p>
+          <h3>${escapar(v.marca)} ${escapar(v.modelo)}</h3>
+          <p class="auto-precio">${formatoQ(v.precio)}</p>
+          <ul class="auto-datos">
+            <li title="Kilometraje">🛣️ ${formatoNumero(v.kilometraje)} km</li>
+            <li title="Transmisión">⚙️ ${escapar(v.transmision)}</li>
+            <li title="Combustible">⛽ ${escapar(v.combustible)}</li>
+            <li title="Color"><span class="muestra" style="background:${escapar(v.color)}"></span>${escapar(v.nombreColor || 'Color')}</li>
+          </ul>
+          <div class="auto-pie">
+            <span class="placa">${escapar(v.placa)}</span>
+            <div class="acciones-fila">
+              <button class="btn btn-icono" data-editar="${v.id}" title="Editar">✏️</button>
+              <button class="btn btn-icono peligro" data-eliminar="${v.id}" title="Eliminar" data-solo-admin>🗑️</button>
+            </div>
+          </div>
+        </div>
+      </article>`).join('')
+      : `<div class="tarjeta vacio completo">🔍 No se encontraron vehículos con esos filtros.</div>`;
+  }
+
+  function abrir(v?: Vehiculo) {
+    form.reset();
+    document.getElementById('titulo-modal')!.textContent = v ? 'Editar vehículo' : 'Agregar vehículo';
+    if (v) llenarFormulario(form, v as unknown as Record<string, unknown>);
+    else llenarFormulario(form, { id: '', anio: new Date().getFullYear(), kilometraje: 0, color: '#14649b' });
+    modal.showModal();
+  }
+
+  document.getElementById('btn-nuevo')!.addEventListener('click', () => abrir());
+
+  lista.addEventListener('click', async (e) => {
+    const boton = (e.target as HTMLElement).closest('button');
+    if (!boton) return;
+    if (boton.dataset.editar) abrir(buscarPorId('vehiculos', boton.dataset.editar));
+    if (boton.dataset.eliminar) {
+      if (!esAdmin()) return aviso('Solo un administrador puede eliminar', 'error');
+      const v = buscarPorId('vehiculos', boton.dataset.eliminar);
+      if (!v) return;
+      const vendido = obtener('ventas').some((x) => x.vehiculoId === v.id && x.estado === 'Completada');
+      if (vendido) return aviso('No se puede eliminar: el vehículo tiene una venta registrada', 'error');
+      if (await confirmar('¿Eliminar vehículo?', `Se eliminará el ${v.marca} ${v.modelo} (${v.placa}).`)) {
+        eliminar('vehiculos', v.id);
+        aviso('Vehículo eliminado');
+        pintar();
+      }
+    }
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    const d = leerFormulario(form);
+    const placa = d.placa.trim().toUpperCase();
+    const repetida = obtener('vehiculos').some((v) => v.placa.toUpperCase() === placa && v.id !== d.id);
+    if (repetida) return aviso('Ya existe un vehículo con esa placa', 'error');
+
+    const anterior = d.id ? buscarPorId('vehiculos', d.id) : undefined;
+    const vehiculo: Vehiculo = {
+      id: d.id || nuevoId(),
+      marca: d.marca.trim(),
+      modelo: d.modelo.trim(),
+      anio: Number(d.anio),
+      placa,
+      precio: Number(d.precio),
+      kilometraje: Number(d.kilometraje) || 0,
+      tipo: d.tipo as Vehiculo['tipo'],
+      transmision: d.transmision as Vehiculo['transmision'],
+      combustible: d.combustible as Vehiculo['combustible'],
+      estado: d.estado as Vehiculo['estado'],
+      nombreColor: d.nombreColor.trim(),
+      color: d.color,
+      creado: anterior?.creado ?? hoy(),
+    };
+    insertarOActualizar('vehiculos', vehiculo);
+    modal.close();
+    aviso(anterior ? 'Vehículo actualizado' : 'Vehículo agregado');
+    pintar();
+  });
+
+  [buscar, filtroEstado, filtroTipo, orden].forEach((el) => el.addEventListener('input', pintar));
+
+  // Permite filtrar desde la URL, ej. vehiculos?estado=Disponible
+  const estadoUrl = new URLSearchParams(location.search).get('estado');
+  if (estadoUrl) filtroEstado.value = estadoUrl;
+  pintar();
+</script>
+
+<style>
+  .barra-filtros { padding: 1rem; margin-bottom: 1.25rem; }
+  .contador { font-size: .82rem; color: var(--texto-suave); margin-top: .6rem; }
+
+  .rejilla-autos { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 1.25rem; }
+  .rejilla-autos :global(.completo) { grid-column: 1 / -1; }
+  .rejilla-autos :global(.auto) { overflow: hidden; transition: transform .2s, box-shadow .2s; }
+  .rejilla-autos :global(.auto:hover) { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(15,23,42,.1); }
+  .rejilla-autos :global(.auto-imagen) { position: relative; padding: 1.5rem 1.5rem .5rem; background: linear-gradient(180deg, #eef6fc, #f8fafc); }
+  .rejilla-autos :global(.auto-imagen svg) { width: 100%; height: auto; }
+  .rejilla-autos :global(.auto-imagen .insignia) { position: absolute; top: .8rem; left: .8rem; }
+  .rejilla-autos :global(.auto-cuerpo) { padding: 1rem 1.15rem 1.15rem; }
+  .rejilla-autos :global(.auto-anio) { font-size: .78rem; color: var(--texto-suave); font-weight: 700; }
+  .rejilla-autos :global(h3) { font-size: 1.15rem; }
+  .rejilla-autos :global(.auto-precio) { font-size: 1.3rem; font-weight: 700; color: var(--azul); margin: .2rem 0 .8rem; }
+  .rejilla-autos :global(.auto-datos) { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; font-size: .82rem; color: var(--texto-suave); margin-bottom: 1rem; }
+  .rejilla-autos :global(.auto-datos li) { display: flex; align-items: center; gap: .35rem; }
+  .rejilla-autos :global(.muestra) { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); }
+  .rejilla-autos :global(.auto-pie) { display: flex; justify-content: space-between; align-items: center; padding-top: .8rem; border-top: 1px solid var(--borde); }
+  .rejilla-autos :global(.placa) { font-family: Consolas, monospace; font-weight: 700; font-size: .85rem; padding: .2rem .55rem; border: 2px solid #334155; border-radius: 5px; background: #fff; }
+
+  .selector-color { height: 42px; padding: .2rem !important; cursor: pointer; }
+</style>

@@ -1,0 +1,183 @@
+---
+import Panel from '../layouts/Panel.astro';
+import { ruta } from '../lib/ruta';
+---
+<Panel titulo="Dashboard" activo="dashboard">
+  <a slot="acciones" href={ruta('/ventas?nueva=1')} class="btn btn-primario">+ Nueva venta</a>
+
+  <section class="kpis">
+    <div class="tarjeta kpi">
+      <span class="kpi-icono azul">🚗</span>
+      <div><p class="kpi-titulo">Vehículos disponibles</p><p class="kpi-valor" id="kpi-disponibles">0</p><p class="kpi-nota" id="kpi-inventario"></p></div>
+    </div>
+    <div class="tarjeta kpi">
+      <span class="kpi-icono verde">💰</span>
+      <div><p class="kpi-titulo">Ingresos del mes</p><p class="kpi-valor" id="kpi-ingresos-mes">Q 0</p><p class="kpi-nota" id="kpi-ventas-mes"></p></div>
+    </div>
+    <div class="tarjeta kpi">
+      <span class="kpi-icono amarillo">📈</span>
+      <div><p class="kpi-titulo">Ingresos totales</p><p class="kpi-valor" id="kpi-ingresos">Q 0</p><p class="kpi-nota" id="kpi-ventas"></p></div>
+    </div>
+    <div class="tarjeta kpi">
+      <span class="kpi-icono celeste">👥</span>
+      <div><p class="kpi-titulo">Clientes</p><p class="kpi-valor" id="kpi-clientes">0</p><p class="kpi-nota">registrados</p></div>
+    </div>
+  </section>
+
+  <section class="fila">
+    <div class="tarjeta grafica">
+      <div class="tarjeta-cabecera"><h2>Ventas de los últimos 6 meses</h2><span class="kpi-nota">en quetzales</span></div>
+      <div class="tarjeta-cuerpo"><div class="barras" id="grafica-meses"></div></div>
+    </div>
+
+    <div class="tarjeta">
+      <div class="tarjeta-cabecera"><h2>Estado del inventario</h2></div>
+      <div class="tarjeta-cuerpo">
+        <div class="dona-contenedor">
+          <div class="dona" id="dona"><div class="dona-centro"><strong id="dona-total">0</strong><span>vehículos</span></div></div>
+          <ul class="leyenda" id="leyenda-estados"></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="fila">
+    <div class="tarjeta">
+      <div class="tarjeta-cabecera"><h2>Últimas ventas</h2><a href={ruta('/ventas')} class="ver-todo">Ver todas →</a></div>
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Folio</th><th>Cliente</th><th>Vehículo</th><th>Fecha</th><th>Total</th></tr></thead>
+          <tbody id="ultimas-ventas"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <div class="tarjeta-cabecera"><h2>Inventario por marca</h2></div>
+      <div class="tarjeta-cuerpo"><ul class="marcas" id="por-marca"></ul></div>
+    </div>
+  </section>
+</Panel>
+
+<script>
+  import { obtener, formatoQ, formatoQCorto, formatoFecha, escapar } from '../lib/datos';
+
+  const vehiculos = obtener('vehiculos');
+  const clientes = obtener('clientes');
+  const ventas = obtener('ventas').filter((v) => v.estado === 'Completada');
+
+  const mesActual = new Date().toLocaleDateString('en-CA').slice(0, 7);
+  const ventasMes = ventas.filter((v) => v.fecha.startsWith(mesActual));
+  const suma = (lista: typeof ventas) => lista.reduce((t, v) => t + v.total, 0);
+  const plural = (n: number, s: string, p: string) => `${n} ${n === 1 ? s : p}`;
+
+  const poner = (id: string, texto: string) => { document.getElementById(id)!.textContent = texto; };
+  poner('kpi-disponibles', String(vehiculos.filter((v) => v.estado === 'Disponible').length));
+  poner('kpi-inventario', `de ${plural(vehiculos.length, 'vehículo', 'vehículos')} en total`);
+  poner('kpi-ingresos-mes', formatoQCorto(suma(ventasMes)));
+  poner('kpi-ventas-mes', plural(ventasMes.length, 'venta este mes', 'ventas este mes'));
+  poner('kpi-ingresos', formatoQCorto(suma(ventas)));
+  poner('kpi-ventas', plural(ventas.length, 'venta registrada', 'ventas registradas'));
+  poner('kpi-clientes', String(clientes.length));
+
+  // ---- Gráfica de barras: últimos 6 meses ----
+  const meses = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - (5 - i));
+    return { clave: d.toLocaleDateString('en-CA').slice(0, 7), nombre: d.toLocaleDateString('es-GT', { month: 'short' }) };
+  });
+  const totales = meses.map((m) => suma(ventas.filter((v) => v.fecha.startsWith(m.clave))));
+  const maximo = Math.max(...totales, 1);
+  document.getElementById('grafica-meses')!.innerHTML = meses.map((m, i) => `
+    <div class="barra-col">
+      <span class="barra-valor">${totales[i] ? 'Q' + Math.round(totales[i] / 1000) + 'k' : ''}</span>
+      <div class="barra" style="height:${Math.max((totales[i] / maximo) * 100, 2)}%" title="${formatoQ(totales[i])}"></div>
+      <span class="barra-mes">${m.nombre}</span>
+    </div>`).join('');
+
+  // ---- Dona: estado del inventario ----
+  const estados = [
+    { nombre: 'Disponible', color: '#16a34a' },
+    { nombre: 'Reservado', color: '#d97706' },
+    { nombre: 'Vendido', color: '#14649b' },
+  ].map((e) => ({ ...e, cantidad: vehiculos.filter((v) => v.estado === e.nombre).length }));
+  let acumulado = 0;
+  const segmentos = estados.map((e) => {
+    const desde = (acumulado / Math.max(vehiculos.length, 1)) * 100;
+    acumulado += e.cantidad;
+    const hasta = (acumulado / Math.max(vehiculos.length, 1)) * 100;
+    return `${e.color} ${desde}% ${hasta}%`;
+  });
+  document.getElementById('dona')!.style.background = vehiculos.length ? `conic-gradient(${segmentos.join(', ')})` : '#e2e8f0';
+  poner('dona-total', String(vehiculos.length));
+  document.getElementById('leyenda-estados')!.innerHTML = estados.map((e) =>
+    `<li><span class="punto" style="background:${e.color}"></span>${e.nombre}<strong>${e.cantidad}</strong></li>`).join('');
+
+  // ---- Últimas ventas ----
+  const ultimas = [...ventas].sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(0, 5);
+  document.getElementById('ultimas-ventas')!.innerHTML = ultimas.length
+    ? ultimas.map((v) => {
+        const c = clientes.find((x) => x.id === v.clienteId);
+        const veh = vehiculos.find((x) => x.id === v.vehiculoId);
+        return `<tr>
+          <td><strong>${escapar(v.folio)}</strong></td>
+          <td>${escapar(c?.nombre ?? '—')}</td>
+          <td>${escapar(veh ? `${veh.marca} ${veh.modelo}` : '—')}</td>
+          <td>${formatoFecha(v.fecha)}</td>
+          <td><strong>${formatoQ(v.total)}</strong></td></tr>`;
+      }).join('')
+    : '<tr><td colspan="5" class="vacio">Aún no hay ventas registradas</td></tr>';
+
+  // ---- Inventario por marca ----
+  const porMarca: Record<string, number> = {};
+  vehiculos.filter((v) => v.estado !== 'Vendido').forEach((v) => { porMarca[v.marca] = (porMarca[v.marca] || 0) + 1; });
+  const listaMarcas = Object.entries(porMarca).sort((a, b) => b[1] - a[1]);
+  const maxMarca = Math.max(...listaMarcas.map((m) => m[1]), 1);
+  document.getElementById('por-marca')!.innerHTML = listaMarcas.length
+    ? listaMarcas.map(([marca, n]) => `
+      <li><div class="marca-fila"><span>${escapar(marca)}</span><strong>${n}</strong></div>
+      <div class="marca-barra"><div style="width:${(n / maxMarca) * 100}%"></div></div></li>`).join('')
+    : '<li class="vacio">Sin vehículos en inventario</li>';
+</script>
+
+<style>
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; margin-bottom: 1.25rem; }
+  .kpi { display: flex; gap: 1rem; align-items: center; padding: 1.25rem; }
+  .kpi-icono { width: 52px; height: 52px; border-radius: 12px; display: grid; place-items: center; font-size: 1.5rem; flex-shrink: 0; }
+  .kpi-icono.azul { background: var(--azul-claro); }
+  .kpi-icono.verde { background: var(--verde-claro); }
+  .kpi-icono.amarillo { background: var(--amarillo-claro); }
+  .kpi-icono.celeste { background: #cffafe; }
+  .kpi-titulo { font-size: .8rem; color: var(--texto-suave); font-weight: 700; }
+  .kpi-valor { font-size: 1.45rem; white-space: nowrap; font-weight: 700; color: var(--texto); line-height: 1.2; }
+  .kpi-nota { font-size: .78rem; color: var(--texto-suave); }
+
+  .fila { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+  .ver-todo { color: var(--azul); font-weight: 700; font-size: .85rem; }
+
+  .barras { display: flex; align-items: flex-end; gap: 1rem; height: 230px; padding-top: 1.5rem; }
+  .barras :global(.barra-col) { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: .4rem; }
+  .barras :global(.barra) { width: 100%; max-width: 56px; border-radius: 8px 8px 3px 3px; background: linear-gradient(180deg, var(--celeste), var(--azul)); transition: height .6s; }
+  .barras :global(.barra:hover) { filter: brightness(1.1); }
+  .barras :global(.barra-valor) { font-size: .75rem; font-weight: 700; color: var(--azul); }
+  .barras :global(.barra-mes) { font-size: .8rem; color: var(--texto-suave); text-transform: capitalize; }
+
+  .dona-contenedor { display: flex; flex-direction: column; align-items: center; gap: 1.25rem; }
+  .dona { width: 170px; height: 170px; border-radius: 50%; display: grid; place-items: center; }
+  .dona-centro { width: 110px; height: 110px; border-radius: 50%; background: #fff; display: grid; place-content: center; text-align: center; }
+  .dona-centro strong { font-size: 1.8rem; line-height: 1; }
+  .dona-centro span { font-size: .75rem; color: var(--texto-suave); }
+  .leyenda { list-style: none; width: 100%; display: grid; gap: .5rem; }
+  .leyenda :global(li) { display: flex; align-items: center; gap: .6rem; font-size: .9rem; }
+  .leyenda :global(li strong) { margin-left: auto; }
+  .leyenda :global(.punto) { width: 12px; height: 12px; border-radius: 3px; }
+
+  .marcas { list-style: none; display: grid; gap: .9rem; }
+  .marcas :global(.marca-fila) { display: flex; justify-content: space-between; font-size: .9rem; margin-bottom: .3rem; }
+  .marcas :global(.marca-barra) { height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+  .marcas :global(.marca-barra div) { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--azul), var(--celeste)); }
+
+  @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .fila { grid-template-columns: 1fr; } }
+  @media (max-width: 520px) { .kpis { grid-template-columns: 1fr; } }
+</style>
