@@ -14,10 +14,17 @@ Por ahora funciona **sin base de datos**: todo se guarda en el navegador (`local
 
 ## ✨ Módulos
 
+### Sitio público (sin iniciar sesión)
+- **Catálogo**: autos disponibles con búsqueda, filtros por marca, tipo y precio, y orden
+- **Detalle del auto**: ficha técnica, descripción, calculadora de cuota mensual y autos similares
+- **Solicitudes**: el visitante pide información, prueba de manejo o financiamiento, y le llega al panel
+
+### Panel administrativo
 - **Login** con validación, "recordarme" y protección de páginas (sin sesión no se puede entrar)
 - **Dashboard**: indicadores, ventas de los últimos 6 meses, estado del inventario, últimas ventas
 - **Vehículos**: inventario con búsqueda, filtros por estado/tipo, orden, agregar, editar y eliminar
 - **Clientes**: búsqueda, agregar, editar y eliminar (no deja borrar clientes con ventas)
+- **Solicitudes**: las que llegan del sitio, con estado (nueva/contactado/cerrada), WhatsApp y registro como cliente
 - **Ventas**: registrar venta (marca el auto como vendido), descuentos, comprobante imprimible y anulación
 
 ## 🎮 Comandos
@@ -40,7 +47,8 @@ src/
 │   ├── autoSvg.ts    ← dibujo del auto según su color
 │   └── ruta.ts       ← rutas con el prefijo del sitio
 ├── layouts/Panel.astro   ← menú lateral + protección de sesión
-├── pages/                ← login, dashboard, vehículos, clientes, ventas
+├── layouts/Sitio.astro   ← cabecera y pie del sitio público
+├── pages/                ← catálogo, detalle, login, dashboard, vehículos, clientes, ventas, solicitudes
 └── styles/global.css
 ```
 

@@ -4,7 +4,7 @@ import { ruta } from '../lib/ruta';
 
 interface Props {
   titulo: string;
-  activo: 'dashboard' | 'vehiculos' | 'clientes' | 'ventas';
+  activo: 'dashboard' | 'vehiculos' | 'clientes' | 'ventas' | 'solicitudes';
 }
 const { titulo, activo } = Astro.props;
 
@@ -13,6 +13,7 @@ const menu = [
   { id: 'vehiculos', texto: 'Vehículos', url: ruta('/vehiculos'), icono: '<path d="M5 17h14M5 17a2 2 0 1 0 4 0M15 17a2 2 0 1 0 4 0M3 17v-5l2-5h14l2 5v5"/><path d="M3 12h18"/>' },
   { id: 'clientes', texto: 'Clientes', url: ruta('/clientes'), icono: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0 0-6M22 21a6 6 0 0 0-5-6"/>' },
   { id: 'ventas', texto: 'Ventas', url: ruta('/ventas'), icono: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>' },
+  { id: 'solicitudes', texto: 'Solicitudes', url: ruta('/solicitudes'), icono: '<path d="M4 4h16v12H5.2L4 17.2z"/><path d="M8 9h8M8 12h5"/>' },
 ];
 const urlLogin = ruta('/login');
 ---
@@ -51,11 +52,16 @@ const urlLogin = ruta('/login');
             <a href={m.url} class:list={['nav-enlace', { activo: activo === m.id }]}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" set:html={m.icono} />
               {m.texto}
+              {m.id === 'solicitudes' && <span class="contador-nav" id="contador-solicitudes" hidden></span>}
             </a>
           ))}
         </nav>
 
         <div class="lateral-pie">
+          <a href={ruta('/')} class="nav-enlace" target="_blank">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+            Ver sitio público ↗
+          </a>
           <button class="nav-enlace" id="btn-restablecer" data-solo-admin>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>
             Restablecer datos
@@ -93,7 +99,7 @@ const urlLogin = ruta('/login');
 
     <script>
       import { usuarioActual, cerrarSesion } from '../lib/sesion';
-      import { restablecerDatos } from '../lib/datos';
+      import { restablecerDatos, obtener } from '../lib/datos';
       import { confirmar, aviso } from '../lib/ui';
 
       const u = usuarioActual();
@@ -102,6 +108,11 @@ const urlLogin = ruta('/login');
         document.getElementById('usuario-rol')!.textContent = u.rol;
         document.getElementById('avatar')!.textContent = u.nombre.charAt(0).toUpperCase();
       }
+
+      // Número de solicitudes nuevas en el menú
+      const nuevas = obtener('solicitudes').filter((x) => x.estado === 'Nueva').length;
+      const contador = document.getElementById('contador-solicitudes');
+      if (contador && nuevas) { contador.hidden = false; contador.textContent = String(nuevas); }
 
       const fecha = new Date().toLocaleDateString('es-GT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       document.getElementById('fecha-hoy')!.textContent = fecha.charAt(0).toUpperCase() + fecha.slice(1);
@@ -152,6 +163,7 @@ const urlLogin = ruta('/login');
       .nav-enlace:hover { background: rgba(255,255,255,.06); color: #fff; }
       .nav-enlace.activo { background: var(--azul); color: #fff; box-shadow: 0 4px 14px rgba(20,100,155,.45); }
 
+      .contador-nav { margin-left: auto; min-width: 22px; height: 22px; padding: 0 .4rem; border-radius: 999px; background: #ef4444; color: #fff; font-size: .72rem; display: grid; place-items: center; }
       .lateral-pie { margin-top: auto; display: grid; gap: .6rem; }
       .usuario { display: flex; align-items: center; gap: .7rem; padding: .75rem; border-radius: 10px; background: rgba(255,255,255,.06); }
       .avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--celeste); color: #fff; font-weight: 700; flex-shrink: 0; }

@@ -39,6 +39,7 @@ const destinoPanel = ruta('/dashboard');
       </section>
 
       <section class="lado-form">
+        <a href={ruta('/')} class="volver-sitio">← Volver al catálogo</a>
         <form id="form-login" class="tarjeta formulario" novalidate>
           <h2>Bienvenido 👋</h2>
           <p class="subtitulo">Ingresa tus credenciales para continuar</p>
@@ -146,7 +147,9 @@ const destinoPanel = ruta('/dashboard');
       .beneficios li { display: flex; align-items: center; gap: .6rem; color: #e0f2fe; }
       .beneficios span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--celeste); font-size: .75rem; font-weight: 700; }
 
-      .lado-form { display: grid; place-items: center; padding: 2rem 1.25rem; }
+      .lado-form { position: relative; display: grid; place-items: center; padding: 3.5rem 1.25rem 2rem; }
+      .volver-sitio { position: absolute; top: 1.25rem; right: 1.5rem; font-weight: 700; font-size: .9rem; color: var(--texto-suave); }
+      .volver-sitio:hover { color: var(--azul); }
       .formulario { width: min(420px, 100%); padding: 2.25rem; display: grid; gap: 1.1rem; }
       .formulario h2 { font-size: 1.6rem; }
       .subtitulo { color: var(--texto-suave); margin-top: -.8rem; }

@@ -57,6 +57,7 @@ import Panel from '../layouts/Panel.astro';
           </div>
           <div class="campo"><label>Nombre del color</label><input name="nombreColor" placeholder="Rojo" /></div>
           <div class="campo"><label>Color</label><input name="color" type="color" value="#14649b" class="selector-color" /></div>
+          <div class="campo completo"><label>Descripción (se muestra en el sitio público)</label><textarea name="descripcion" rows="3" placeholder="Estado del vehículo, extras, historial de servicios..."></textarea></div>
         </div>
         <datalist id="marcas">
           <option>Toyota</option><option>Honda</option><option>Nissan</option><option>Mazda</option><option>Hyundai</option>
@@ -76,6 +77,7 @@ import Panel from '../layouts/Panel.astro';
   import { aviso, confirmar, prepararModal, leerFormulario, llenarFormulario } from '../lib/ui';
   import { esAdmin } from '../lib/sesion';
   import { autoSvg } from '../lib/autoSvg';
+  import { ruta } from '../lib/ruta';
 
   const lista = document.getElementById('lista')!;
   const buscar = document.getElementById('buscar') as HTMLInputElement;
@@ -117,6 +119,7 @@ import Panel from '../layouts/Panel.astro';
           <div class="auto-pie">
             <span class="placa">${escapar(v.placa)}</span>
             <div class="acciones-fila">
+              ${v.estado !== 'Vendido' ? `<a class="btn btn-icono" href="${ruta('/auto')}?id=${v.id}" target="_blank" title="Ver en el sitio público">🌐</a>` : ''}
               <button class="btn btn-icono" data-editar="${v.id}" title="Editar">✏️</button>
               <button class="btn btn-icono peligro" data-eliminar="${v.id}" title="Eliminar" data-solo-admin>🗑️</button>
             </div>
@@ -177,6 +180,7 @@ import Panel from '../layouts/Panel.astro';
       estado: d.estado as Vehiculo['estado'],
       nombreColor: d.nombreColor.trim(),
       color: d.color,
+      descripcion: (d.descripcion || '').trim(),
       creado: anterior?.creado ?? hoy(),
     };
     insertarOActualizar('vehiculos', vehiculo);

@@ -18,6 +18,7 @@ export interface Vehiculo {
   tipo: 'Sedán' | 'SUV' | 'Pickup' | 'Hatchback' | 'Deportivo';
   placa: string;
   estado: EstadoVehiculo;
+  descripcion?: string;
   creado: string;
 }
 
@@ -45,7 +46,22 @@ export interface Venta {
   estado: 'Completada' | 'Anulada';
 }
 
-type Colecciones = { vehiculos: Vehiculo; clientes: Cliente; ventas: Venta };
+export type EstadoSolicitud = 'Nueva' | 'Contactado' | 'Cerrada';
+
+// Solicitudes que llegan desde el sitio público
+export interface Solicitud {
+  id: string;
+  vehiculoId: string;
+  nombre: string;
+  telefono: string;
+  correo: string;
+  tipo: 'Información' | 'Prueba de manejo' | 'Financiamiento';
+  mensaje: string;
+  fecha: string;
+  estado: EstadoSolicitud;
+}
+
+type Colecciones = { vehiculos: Vehiculo; clientes: Cliente; ventas: Venta; solicitudes: Solicitud };
 type NombreColeccion = keyof Colecciones;
 
 const PREFIJO = 'autos_';
@@ -126,6 +142,20 @@ function sembrarSiHaceFalta() {
     v('Mitsubishi', 'L200', 2022, '#e5e7eb', 'Blanco', 255000, 28000, 'Manual', 'Diésel', 'Pickup', 'P-741BCD', 'Vendido'),
   ];
 
+  const descripciones: Record<string, string> = {
+    Corolla: 'Sedán confiable y económico, ideal para la ciudad. Un solo dueño, servicios al día en agencia.',
+    Hilux: 'Pickup resistente para trabajo y aventura. Motor diésel, excelente para carretera y terracería.',
+    'CR-V': 'SUV familiar casi nueva, espaciosa y cómoda, con pantalla táctil y cámara de reversa.',
+    'CX-5': 'SUV con diseño elegante y gran manejo. Interiores en excelente estado.',
+    Sentra: 'Sedán amplio y económico, perfecto como primer carro o para uso diario.',
+    Picanto: 'Compacto, ágil y muy económico en combustible. Ideal para moverse en la ciudad.',
+    Tucson: 'SUV diésel con buen rendimiento y espacio para toda la familia.',
+    Mustang: 'Deportivo icónico con gran potencia. Una experiencia de manejo única.',
+    'RAV4 Hybrid': 'SUV híbrida prácticamente nueva: bajo consumo, tecnología y garantía vigente.',
+    L200: 'Pickup de trabajo con gran capacidad de carga y transmisión manual.',
+  };
+  vehiculos.forEach((x) => { x.descripcion = descripciones[x.modelo]; });
+
   const c = (nombre: string, nit: string, telefono: string, correo: string, direccion: string): Cliente => ({
     id: nuevoId(), nombre, nit, telefono, correo, direccion, creado: hoy(),
   });
@@ -161,14 +191,37 @@ function sembrarSiHaceFalta() {
     };
   });
 
+  // Solicitudes de ejemplo que "llegaron" desde el sitio público
+  const disponibles = vehiculos.filter((x) => x.estado === 'Disponible');
+  const solicitudes: Solicitud[] = [
+    { id: nuevoId(), vehiculoId: disponibles[0].id, nombre: 'Pedro Castillo', telefono: '5566-7788', correo: 'pedro.c@correo.com',
+      tipo: 'Prueba de manejo', mensaje: '¿Puedo probarlo este sábado en la mañana?', fecha: fechaHace(1), estado: 'Nueva' },
+    { id: nuevoId(), vehiculoId: disponibles[3].id, nombre: 'Lucía Morales', telefono: '4011-2233', correo: 'lucia.m@correo.com',
+      tipo: 'Financiamiento', mensaje: 'Me interesa financiarlo a 48 meses, ¿qué enganche necesito?', fecha: fechaHace(3), estado: 'Contactado' },
+  ];
+
   guardar('vehiculos', vehiculos);
   guardar('clientes', clientes);
   guardar('ventas', ventas);
+  guardar('solicitudes', solicitudes);
+}
+
+// Descripción de respaldo para autos sin descripción
+export const descripcionAuto = (v: Vehiculo) =>
+  v.descripcion?.trim() ||
+  `${v.marca} ${v.modelo} ${v.anio} ${v.tipo.toLowerCase()} con transmisión ${v.transmision.toLowerCase()}, motor a ${v.combustible.toLowerCase()} y ${formatoNumero(v.kilometraje)} km recorridos.`;
+
+// Cuota mensual de un préstamo (sistema francés)
+export function cuotaMensual(monto: number, meses: number, tasaAnual: number) {
+  const i = tasaAnual / 100 / 12;
+  if (monto <= 0 || meses <= 0) return 0;
+  if (i === 0) return monto / meses;
+  return (monto * i) / (1 - Math.pow(1 + i, -meses));
 }
 
 // Borra todo y vuelve a cargar los datos de ejemplo
 export function restablecerDatos() {
-  ['vehiculos', 'clientes', 'ventas', 'sembrado'].forEach((k) => localStorage.removeItem(PREFIJO + k));
+  ['vehiculos', 'clientes', 'ventas', 'solicitudes', 'sembrado'].forEach((k) => localStorage.removeItem(PREFIJO + k));
   sembrarSiHaceFalta();
 }
 

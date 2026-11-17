@@ -1,17 +1,201 @@
 ---
-import { ruta } from '../lib/ruta';
-const destinoPanel = ruta('/dashboard');
-const destinoLogin = ruta('/login');
+import Sitio from '../layouts/Sitio.astro';
+import { autoSvg } from '../lib/autoSvg';
 ---
-<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <title>AutoGestión GT</title>
-    <script is:inline define:vars={{ destinoPanel, destinoLogin }}>
-      const sesion = sessionStorage.getItem('autos_sesion') || localStorage.getItem('autos_sesion');
-      location.replace(sesion ? destinoPanel : destinoLogin);
-    </script>
-  </head>
-  <body></body>
-</html>
+<Sitio titulo="Catálogo de vehículos">
+  <section class="hero">
+    <div class="envoltura hero-rejilla">
+      <div>
+        <p class="etiqueta-hero">🚘 Autos nuevos y seminuevos</p>
+        <h1>Encuentra el auto <span>perfecto</span> para ti</h1>
+        <p class="hero-texto">Vehículos revisados, con papeles en regla y opciones de financiamiento a tu medida.</p>
+        <div class="hero-busqueda">
+          <input class="control" id="buscar" placeholder="Busca por marca o modelo: Toyota, Hilux, CR-V..." />
+          <a href="#catalogo" class="btn btn-primario">Buscar</a>
+        </div>
+        <div class="hero-datos">
+          <div><strong id="dato-disponibles">0</strong><span>autos disponibles</span></div>
+          <div><strong id="dato-marcas">0</strong><span>marcas</span></div>
+          <div><strong>100%</strong><span>revisados</span></div>
+        </div>
+      </div>
+      <div class="hero-auto" set:html={autoSvg('#14649b', 'SUV')} />
+    </div>
+  </section>
+
+  <section class="envoltura" id="catalogo">
+    <div class="catalogo-cabecera">
+      <div>
+        <h2>Nuestro inventario</h2>
+        <p class="contador" id="contador"></p>
+      </div>
+      <div class="filtros">
+        <select class="control" id="filtro-marca"><option value="">Todas las marcas</option></select>
+        <select class="control" id="filtro-precio">
+          <option value="">Cualquier precio</option>
+          <option value="150000">Hasta Q 150,000</option>
+          <option value="250000">Hasta Q 250,000</option>
+          <option value="350000">Hasta Q 350,000</option>
+        </select>
+        <select class="control" id="orden">
+          <option value="reciente">Más recientes</option>
+          <option value="precio-asc">Precio: menor a mayor</option>
+          <option value="precio-desc">Precio: mayor a menor</option>
+          <option value="anio">Año: más nuevo</option>
+          <option value="km">Menor kilometraje</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="chips" id="chips">
+      {['Todos', 'Sedán', 'SUV', 'Pickup', 'Hatchback', 'Deportivo'].map((t, i) => (
+        <button class:list={['chip', { activo: i === 0 }]} data-tipo={i === 0 ? '' : t}>{t}</button>
+      ))}
+    </div>
+
+    <div class="rejilla" id="rejilla"></div>
+  </section>
+
+  <section class="envoltura por-que" id="por-que">
+    <h2>¿Por qué comprar con nosotros?</h2>
+    <div class="beneficios">
+      <div class="beneficio"><span>🔍</span><h3>Revisión completa</h3><p>Cada vehículo pasa una inspección mecánica de más de 100 puntos.</p></div>
+      <div class="beneficio"><span>📄</span><h3>Papeles en regla</h3><p>Traspaso seguro y documentación verificada.</p></div>
+      <div class="beneficio"><span>💳</span><h3>Financiamiento</h3><p>Planes de 12 a 60 meses con enganche desde 20%.</p></div>
+      <div class="beneficio"><span>🛡️</span><h3>Garantía</h3><p>Garantía mecánica en motor y caja en autos seleccionados.</p></div>
+    </div>
+  </section>
+</Sitio>
+
+<script>
+  import { obtener, formatoQ, formatoNumero, escapar, cuotaMensual } from '../lib/datos';
+  import { autoSvg } from '../lib/autoSvg';
+  import { ruta } from '../lib/ruta';
+
+  // El público solo ve autos que se pueden comprar
+  const autos = obtener('vehiculos').filter((v) => v.estado !== 'Vendido');
+
+  const buscar = document.getElementById('buscar') as HTMLInputElement;
+  const filtroMarca = document.getElementById('filtro-marca') as HTMLSelectElement;
+  const filtroPrecio = document.getElementById('filtro-precio') as HTMLSelectElement;
+  const orden = document.getElementById('orden') as HTMLSelectElement;
+  const rejilla = document.getElementById('rejilla')!;
+  let tipo = '';
+
+  const marcas = [...new Set(autos.map((a) => a.marca))].sort();
+  filtroMarca.innerHTML += marcas.map((m) => `<option>${escapar(m)}</option>`).join('');
+  document.getElementById('dato-disponibles')!.textContent = String(autos.filter((a) => a.estado === 'Disponible').length);
+  document.getElementById('dato-marcas')!.textContent = String(marcas.length);
+
+  function pintar() {
+    const texto = buscar.value.toLowerCase().trim();
+    const maximo = Number(filtroPrecio.value) || Infinity;
+    const lista = autos.filter((a) =>
+      (!texto || `${a.marca} ${a.modelo} ${a.tipo}`.toLowerCase().includes(texto)) &&
+      (!filtroMarca.value || a.marca === filtroMarca.value) &&
+      (!tipo || a.tipo === tipo) &&
+      a.precio <= maximo);
+
+    if (orden.value === 'precio-asc') lista.sort((a, b) => a.precio - b.precio);
+    if (orden.value === 'precio-desc') lista.sort((a, b) => b.precio - a.precio);
+    if (orden.value === 'anio') lista.sort((a, b) => b.anio - a.anio);
+    if (orden.value === 'km') lista.sort((a, b) => a.kilometraje - b.kilometraje);
+
+    document.getElementById('contador')!.textContent = `${lista.length} vehículo${lista.length === 1 ? '' : 's'} encontrado${lista.length === 1 ? '' : 's'}`;
+
+    rejilla.innerHTML = lista.length ? lista.map((a) => {
+      const cuota = cuotaMensual(a.precio * 0.8, 60, 12);
+      return `
+      <a href="${ruta('/auto')}?id=${a.id}" class="carro">
+        <div class="carro-imagen">
+          ${a.estado === 'Reservado' ? '<span class="insignia Reservado">Apartado</span>' : a.kilometraje < 10000 ? '<span class="insignia Disponible">Casi nuevo</span>' : ''}
+          ${autoSvg(a.color, a.tipo)}
+        </div>
+        <div class="carro-cuerpo">
+          <p class="carro-meta">${a.anio} · ${formatoNumero(a.kilometraje)} km · ${escapar(a.transmision)}</p>
+          <h3>${escapar(a.marca)} ${escapar(a.modelo)}</h3>
+          <p class="carro-precio">${formatoQ(a.precio).replace('.00', '')}</p>
+          <p class="carro-cuota">o desde <strong>${formatoQ(cuota).replace(/\.\d+$/, '')}/mes</strong>*</p>
+          <div class="carro-pie">
+            <span>⛽ ${escapar(a.combustible)}</span><span>🚙 ${escapar(a.tipo)}</span>
+            <span class="ver">Ver detalles →</span>
+          </div>
+        </div>
+      </a>`;
+    }).join('') : `<div class="sin-resultados">😕 No encontramos autos con esos filtros.<br><button class="btn btn-secundario" id="limpiar">Limpiar filtros</button></div>`;
+
+    document.getElementById('limpiar')?.addEventListener('click', () => {
+      buscar.value = ''; filtroMarca.value = ''; filtroPrecio.value = ''; tipo = '';
+      document.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('activo', i === 0));
+      pintar();
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.chip').forEach((chip) => chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach((c) => c.classList.remove('activo'));
+    chip.classList.add('activo');
+    tipo = chip.dataset.tipo || '';
+    pintar();
+  }));
+  [buscar, filtroMarca, filtroPrecio, orden].forEach((el) => el.addEventListener('input', pintar));
+  pintar();
+</script>
+
+<style>
+  .hero { background: radial-gradient(circle at 85% 20%, rgba(25,175,225,.18), transparent 45%), linear-gradient(180deg, #eef6fc, #fff); padding: 3.5rem 0 3rem; }
+  .hero-rejilla { display: grid; grid-template-columns: 1.1fr 1fr; gap: 2rem; align-items: center; }
+  .etiqueta-hero { display: inline-block; padding: .35rem .8rem; border-radius: 999px; background: var(--azul-claro); color: var(--azul); font-weight: 700; font-size: .85rem; margin-bottom: 1rem; }
+  .hero h1 { font-size: clamp(2.2rem, 4.5vw, 3.4rem); color: var(--marino); margin-bottom: 1rem; }
+  .hero h1 span { color: var(--azul); }
+  .hero-texto { font-size: 1.1rem; color: var(--texto-suave); max-width: 520px; margin-bottom: 1.75rem; }
+  .hero-busqueda { display: flex; gap: .6rem; max-width: 560px; padding: .4rem; background: #fff; border-radius: 12px; box-shadow: var(--sombra); border: 1px solid var(--borde); }
+  .hero-busqueda .control { border: none; box-shadow: none; }
+  .hero-datos { display: flex; gap: 2.5rem; margin-top: 2rem; }
+  .hero-datos strong { display: block; font-size: 1.8rem; color: var(--azul); }
+  .hero-datos span { font-size: .85rem; color: var(--texto-suave); }
+  .hero-auto { filter: drop-shadow(0 25px 30px rgba(20,100,155,.25)); animation: flotar 5s ease-in-out infinite; }
+  @keyframes flotar { 50% { transform: translateY(-10px); } }
+
+  #catalogo { padding-top: 3rem; scroll-margin-top: 80px; }
+  .catalogo-cabecera { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .catalogo-cabecera h2 { font-size: 1.8rem; color: var(--marino); }
+  .contador { color: var(--texto-suave); font-size: .9rem; }
+  .filtros { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .filtros .control { width: auto; }
+  .chips { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .chip { padding: .45rem 1rem; border-radius: 999px; border: 1px solid var(--borde); background: #fff; font-weight: 700; font-size: .85rem; color: var(--texto-suave); cursor: pointer; }
+  .chip:hover { border-color: var(--celeste); color: var(--azul); }
+  .chip.activo { background: var(--azul); border-color: var(--azul); color: #fff; }
+
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+  .rejilla :global(.carro) { display: block; border: 1px solid var(--borde); border-radius: 16px; overflow: hidden; background: #fff; transition: transform .2s, box-shadow .2s; }
+  .rejilla :global(.carro:hover) { transform: translateY(-5px); box-shadow: 0 18px 40px rgba(15,23,42,.12); }
+  .rejilla :global(.carro-imagen) { position: relative; padding: 2rem 1.5rem .75rem; background: linear-gradient(180deg, #eef6fc, #f8fafc); }
+  .rejilla :global(.carro-imagen .insignia) { position: absolute; top: .9rem; left: .9rem; }
+  .rejilla :global(.carro-imagen svg) { transition: transform .3s; }
+  .rejilla :global(.carro:hover .carro-imagen svg) { transform: translateX(6px); }
+  .rejilla :global(.carro-cuerpo) { padding: 1.1rem 1.25rem 1.25rem; }
+  .rejilla :global(.carro-meta) { font-size: .8rem; color: var(--texto-suave); }
+  .rejilla :global(h3) { font-size: 1.2rem; color: var(--marino); }
+  .rejilla :global(.carro-precio) { font-size: 1.45rem; font-weight: 700; color: var(--azul); margin-top: .3rem; }
+  .rejilla :global(.carro-cuota) { font-size: .82rem; color: var(--texto-suave); }
+  .rejilla :global(.carro-cuota strong) { color: var(--verde); }
+  .rejilla :global(.carro-pie) { display: flex; gap: .9rem; align-items: center; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--borde); font-size: .82rem; color: var(--texto-suave); }
+  .rejilla :global(.ver) { margin-left: auto; color: var(--azul); font-weight: 700; }
+  .rejilla :global(.sin-resultados) { grid-column: 1 / -1; text-align: center; padding: 3rem; color: var(--texto-suave); display: grid; gap: 1rem; justify-items: center; }
+
+  .por-que { padding-top: 4.5rem; }
+  .por-que h2 { font-size: 1.8rem; color: var(--marino); text-align: center; margin-bottom: 2rem; }
+  .beneficios { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
+  .beneficio { padding: 1.5rem; border-radius: 14px; background: #f8fafc; border: 1px solid var(--borde); }
+  .beneficio span { font-size: 1.8rem; }
+  .beneficio h3 { margin: .6rem 0 .3rem; color: var(--marino); font-size: 1.05rem; }
+  .beneficio p { color: var(--texto-suave); font-size: .9rem; }
+
+  @media (max-width: 900px) {
+    .hero-rejilla { grid-template-columns: 1fr; }
+    .hero-auto { display: none; }
+    .beneficios { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 520px) { .beneficios { grid-template-columns: 1fr; } .hero-datos { gap: 1.5rem; } }
+</style>

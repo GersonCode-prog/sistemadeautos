@@ -1,0 +1,247 @@
+---
+import Sitio from '../layouts/Sitio.astro';
+import { ruta } from '../lib/ruta';
+---
+<Sitio titulo="Detalle del vehículo">
+  <main class="envoltura detalle">
+    <a href={ruta('/')} class="volver">← Volver al catálogo</a>
+
+    <div id="no-encontrado" class="no-encontrado" hidden>
+      <p>🚫 Este vehículo ya no está disponible o no existe.</p>
+      <a href={ruta('/')} class="btn btn-primario">Ver otros autos</a>
+    </div>
+
+    <div id="contenido" hidden>
+      <div class="rejilla-detalle">
+        <!-- Columna izquierda: imagen y datos -->
+        <div>
+          <div class="galeria">
+            <span class="insignia" id="insignia"></span>
+            <div id="imagen"></div>
+            <div class="colores-vista"><span class="muestra" id="muestra"></span><span id="nombre-color"></span></div>
+          </div>
+
+          <section class="bloque">
+            <h2>Descripción</h2>
+            <p id="descripcion"></p>
+          </section>
+
+          <section class="bloque">
+            <h2>Ficha técnica</h2>
+            <dl class="ficha" id="ficha"></dl>
+          </section>
+
+          <section class="bloque">
+            <h2>Incluye</h2>
+            <ul class="incluye">
+              <li>✓ Inspección mecánica certificada</li>
+              <li>✓ Traspaso y papelería incluidos</li>
+              <li>✓ Servicio de lavado y detallado</li>
+              <li>✓ Tarjeta de circulación al día</li>
+            </ul>
+          </section>
+        </div>
+
+        <!-- Columna derecha: precio, financiamiento y solicitud -->
+        <aside class="lateral-compra">
+          <div class="tarjeta caja-precio">
+            <p class="meta" id="meta"></p>
+            <h1 id="titulo"></h1>
+            <p class="precio" id="precio"></p>
+
+            <div class="financiamiento">
+              <h3>💳 Calcula tu cuota</h3>
+              <div class="campo">
+                <label>Enganche: <strong id="txt-enganche"></strong></label>
+                <input type="range" id="enganche" min="20" max="80" step="5" value="30" />
+              </div>
+              <div class="campo">
+                <label>Plazo</label>
+                <div class="plazos" id="plazos">
+                  {[12, 24, 36, 48, 60].map((m) => <button type="button" class:list={['plazo', { activo: m === 48 }]} data-meses={m}>{m}m</button>)}
+                </div>
+              </div>
+              <div class="cuota">
+                <span>Cuota mensual aprox.</span>
+                <strong id="cuota"></strong>
+                <small>Tasa referencial 12% anual. Sujeto a aprobación.</small>
+              </div>
+            </div>
+          </div>
+
+          <form class="tarjeta caja-solicitud" id="form-solicitud" novalidate>
+            <h3>¿Te interesa este auto?</h3>
+            <p class="ayuda">Déjanos tus datos y un asesor te contactará.</p>
+            <div class="tipos">
+              <label><input type="radio" name="tipo" value="Información" checked /> Información</label>
+              <label><input type="radio" name="tipo" value="Prueba de manejo" /> Prueba de manejo</label>
+              <label><input type="radio" name="tipo" value="Financiamiento" /> Financiamiento</label>
+            </div>
+            <div class="campo"><label>Nombre *</label><input name="nombre" required placeholder="Tu nombre completo" /></div>
+            <div class="campo"><label>Teléfono *</label><input name="telefono" required placeholder="5555-5555" pattern="[0-9\-\s+]{8,}" title="Al menos 8 dígitos" /></div>
+            <div class="campo"><label>Correo</label><input name="correo" type="email" placeholder="tu@correo.com" /></div>
+            <div class="campo"><label>Mensaje</label><textarea name="mensaje" rows="3" placeholder="¿Alguna pregunta?"></textarea></div>
+            <button type="submit" class="btn btn-primario enviar">Enviar solicitud</button>
+            <p class="enviado" id="enviado" hidden>✅ ¡Solicitud enviada! Te contactaremos pronto.</p>
+          </form>
+        </aside>
+      </div>
+
+      <section class="similares-seccion">
+        <h2>También te puede interesar</h2>
+        <div class="similares" id="similares"></div>
+      </section>
+    </div>
+  </main>
+</Sitio>
+
+<script>
+  import { obtener, buscarPorId, insertarOActualizar, nuevoId, hoy, formatoQ, formatoNumero, escapar, descripcionAuto, cuotaMensual, type Solicitud } from '../lib/datos';
+  import { autoSvg } from '../lib/autoSvg';
+  import { ruta } from '../lib/ruta';
+  import { aviso } from '../lib/ui';
+
+  const id = new URLSearchParams(location.search).get('id') || '';
+  const a = buscarPorId('vehiculos', id);
+
+  if (!a || a.estado === 'Vendido') {
+    document.getElementById('no-encontrado')!.hidden = false;
+  } else {
+    document.getElementById('contenido')!.hidden = false;
+    document.title = `${a.marca} ${a.modelo} ${a.anio} | AutoGestión GT`;
+    const poner = (k: string, t: string) => { document.getElementById(k)!.textContent = t; };
+
+    const insignia = document.getElementById('insignia')!;
+    insignia.className = `insignia ${a.estado}`;
+    insignia.textContent = a.estado === 'Reservado' ? 'Apartado' : 'Disponible';
+    document.getElementById('imagen')!.innerHTML = autoSvg(a.color, a.tipo);
+    document.getElementById('muestra')!.style.background = a.color;
+    poner('nombre-color', a.nombreColor || 'Color');
+    poner('descripcion', descripcionAuto(a));
+    poner('meta', `${a.anio} · ${a.tipo}`);
+    poner('titulo', `${a.marca} ${a.modelo}`);
+    poner('precio', formatoQ(a.precio));
+
+    const ficha: [string, string][] = [
+      ['Marca', a.marca], ['Modelo', a.modelo], ['Año', String(a.anio)], ['Tipo', a.tipo],
+      ['Kilometraje', `${formatoNumero(a.kilometraje)} km`], ['Transmisión', a.transmision],
+      ['Combustible', a.combustible], ['Color', a.nombreColor || '—'],
+    ];
+    document.getElementById('ficha')!.innerHTML = ficha.map(([k, v]) => `<div><dt>${k}</dt><dd>${escapar(v)}</dd></div>`).join('');
+
+    // ---- Calculadora de financiamiento ----
+    const enganche = document.getElementById('enganche') as HTMLInputElement;
+    let meses = 48;
+    const calcular = () => {
+      const porcentaje = Number(enganche.value);
+      const montoEnganche = a.precio * (porcentaje / 100);
+      poner('txt-enganche', `${porcentaje}% (${formatoQ(montoEnganche)})`);
+      poner('cuota', `${formatoQ(cuotaMensual(a.precio - montoEnganche, meses, 12))} × ${meses} meses`);
+    };
+    enganche.addEventListener('input', calcular);
+    document.querySelectorAll<HTMLButtonElement>('.plazo').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('.plazo').forEach((x) => x.classList.remove('activo'));
+      b.classList.add('activo');
+      meses = Number(b.dataset.meses);
+      calcular();
+    }));
+    calcular();
+
+    // ---- Solicitud: se guarda y le aparece al vendedor en el panel ----
+    const form = document.getElementById('form-solicitud') as HTMLFormElement;
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!form.reportValidity()) return;
+      const d = Object.fromEntries(new FormData(form).entries()) as Record<string, string>;
+      const solicitud: Solicitud = {
+        id: nuevoId(),
+        vehiculoId: a.id,
+        nombre: d.nombre.trim(),
+        telefono: d.telefono.trim(),
+        correo: d.correo.trim(),
+        tipo: d.tipo as Solicitud['tipo'],
+        mensaje: d.mensaje.trim(),
+        fecha: hoy(),
+        estado: 'Nueva',
+      };
+      insertarOActualizar('solicitudes', solicitud);
+      form.reset();
+      document.getElementById('enviado')!.hidden = false;
+      aviso('Solicitud enviada');
+    });
+
+    // ---- Autos similares ----
+    const similares = obtener('vehiculos')
+      .filter((x) => x.id !== a.id && x.estado !== 'Vendido')
+      .sort((x, y) => Number(y.tipo === a.tipo) - Number(x.tipo === a.tipo) || Math.abs(x.precio - a.precio) - Math.abs(y.precio - a.precio))
+      .slice(0, 3);
+    document.getElementById('similares')!.innerHTML = similares.map((x) => `
+      <a href="${ruta('/auto')}?id=${x.id}" class="similar">
+        <div class="similar-img">${autoSvg(x.color, x.tipo)}</div>
+        <div><strong>${escapar(x.marca)} ${escapar(x.modelo)} ${x.anio}</strong><p>${formatoQ(x.precio)}</p></div>
+      </a>`).join('');
+  }
+</script>
+
+<style>
+  .detalle { padding-top: 1.5rem; }
+  .volver { display: inline-block; color: var(--texto-suave); font-weight: 700; margin-bottom: 1.25rem; }
+  .volver:hover { color: var(--azul); }
+  .no-encontrado { text-align: center; padding: 4rem 1rem; display: grid; gap: 1rem; justify-items: center; color: var(--texto-suave); font-size: 1.1rem; }
+
+  .rejilla-detalle { display: grid; grid-template-columns: 1.5fr 1fr; gap: 2rem; align-items: start; }
+  .galeria { position: relative; padding: 3rem 2.5rem 1.5rem; border-radius: 18px; background: radial-gradient(circle at 50% 30%, #fff, #e6f1f9); border: 1px solid var(--borde); }
+  .galeria .insignia { position: absolute; top: 1rem; left: 1rem; }
+  .colores-vista { display: flex; align-items: center; gap: .5rem; justify-content: center; margin-top: .75rem; color: var(--texto-suave); font-size: .9rem; }
+  .muestra { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--borde); }
+
+  .bloque { margin-top: 2rem; }
+  .bloque h2 { font-size: 1.2rem; color: var(--marino); margin-bottom: .75rem; }
+  .bloque p { color: var(--texto-suave); line-height: 1.7; }
+  .ficha { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; border: 1px solid var(--borde); border-radius: 12px; overflow: hidden; }
+  .ficha :global(div) { display: flex; justify-content: space-between; padding: .75rem 1rem; border-bottom: 1px solid var(--borde); }
+  .ficha :global(div:nth-child(odd)) { border-right: 1px solid var(--borde); }
+  .ficha :global(dt) { color: var(--texto-suave); font-size: .9rem; }
+  .ficha :global(dd) { font-weight: 700; }
+  .incluye { list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; color: var(--texto-suave); }
+
+  .lateral-compra { position: sticky; top: 90px; display: grid; gap: 1.25rem; }
+  .caja-precio { padding: 1.5rem; }
+  .meta { color: var(--texto-suave); font-size: .9rem; }
+  .caja-precio h1 { font-size: 1.8rem; color: var(--marino); }
+  .precio { font-size: 2rem; font-weight: 700; color: var(--azul); margin-bottom: 1.25rem; }
+  .financiamiento { padding-top: 1.25rem; border-top: 1px solid var(--borde); display: grid; gap: 1rem; }
+  .financiamiento h3 { font-size: 1rem; }
+  .financiamiento input[type='range'] { width: 100%; accent-color: var(--azul); padding: 0; border: none; box-shadow: none; }
+  .plazos { display: flex; gap: .4rem; }
+  .plazo { flex: 1; padding: .45rem 0; border: 1px solid var(--borde); border-radius: 8px; background: #fff; font-weight: 700; cursor: pointer; font-size: .85rem; }
+  .plazo.activo { background: var(--azul); color: #fff; border-color: var(--azul); }
+  .cuota { padding: 1rem; border-radius: 12px; background: var(--marino); color: #fff; display: grid; gap: .15rem; }
+  .cuota span { font-size: .82rem; color: #94a3b8; }
+  .cuota strong { font-size: 1.3rem; color: var(--celeste); }
+  .cuota small { font-size: .72rem; color: #94a3b8; }
+
+  .caja-solicitud { padding: 1.5rem; display: grid; gap: .9rem; }
+  .caja-solicitud h3 { font-size: 1.15rem; color: var(--marino); }
+  .ayuda { color: var(--texto-suave); font-size: .88rem; margin-top: -.6rem; }
+  .tipos { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .tipos label { display: flex; align-items: center; gap: .35rem; padding: .4rem .7rem; border: 1px solid var(--borde); border-radius: 999px; font-size: .82rem; cursor: pointer; }
+  .tipos label:has(input:checked) { border-color: var(--azul); background: var(--azul-claro); color: var(--azul); font-weight: 700; }
+  .tipos input { accent-color: var(--azul); }
+  .enviar { padding: .8rem; }
+  .enviado { color: var(--verde); font-weight: 700; font-size: .9rem; }
+
+  .similares-seccion { margin-top: 3.5rem; }
+  .similares-seccion h2 { font-size: 1.4rem; color: var(--marino); margin-bottom: 1rem; }
+  .similares { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .similares :global(.similar) { display: flex; gap: 1rem; align-items: center; padding: 1rem; border: 1px solid var(--borde); border-radius: 12px; transition: border-color .15s; }
+  .similares :global(.similar:hover) { border-color: var(--celeste); }
+  .similares :global(.similar-img) { width: 110px; flex-shrink: 0; }
+  .similares :global(p) { color: var(--azul); font-weight: 700; font-size: .9rem; }
+
+  @media (max-width: 900px) {
+    .rejilla-detalle, .similares { grid-template-columns: 1fr; }
+    .lateral-compra { position: static; }
+  }
+  @media (max-width: 520px) { .ficha, .incluye { grid-template-columns: 1fr; } .ficha :global(div:nth-child(odd)) { border-right: none; } }
+</style>
